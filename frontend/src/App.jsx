@@ -92,9 +92,16 @@ function App() {
   const canAdd = remaining > 0
 
   return (
-    <div className="container">
+    <>
+      <div className="topbar">
+        <div className="topbar-inner">
+          <div className="logo">🫐</div>
+          <strong>Blueberry Breeding Program</strong>
+        </div>
+      </div>
+      <div className="container">
       <header className="header">
-        <h2>Bioinformatics Platform</h2>
+        <h2>Blueberry breeding program task</h2>
         <p>Enter up to 10 gene names. Press Enter or comma to add.</p>
       </header>
 
@@ -151,9 +158,25 @@ function App() {
       {heatmap && (
         <div className="panel">
           <Plot
-            data={[{ type: 'heatmap', x: heatmap.x, y: heatmap.y, z: heatmap.z, colorscale: 'Viridis' }]}
-            layout={{ width: 900, height: Math.max(320, 32 * heatmap.y.length), title: 'Expression Heatmap' }}
-            config={{ responsive: true }}
+            data={[{
+              type: 'heatmap',
+              x: heatmap.x,
+              y: heatmap.y,
+              z: heatmap.z,
+              colorscale: 'Viridis',
+              hovertemplate: 'Gene: %{y}<br>Sample: %{x}<br>Value: %{z}<extra></extra>'
+            }]}
+            layout={{
+              autosize: true,
+              height: Math.max(320, 28 * heatmap.y.length),
+              margin: { l: 180, r: 20, t: 40, b: 60 },
+              title: 'Expression Heatmap',
+              yaxis: { automargin: true, tickfont: { size: 10 } },
+              xaxis: { automargin: true, tickangle: -45, tickfont: { size: 10 } }
+            }}
+            config={{ responsive: true, displayModeBar: false }}
+            useResizeHandler
+            style={{ width: '100%', height: Math.max(320, 28 * heatmap.y.length) }}
           />
           <div className="table-wrap">
             <table>
@@ -175,7 +198,9 @@ function App() {
           </div>
         </div>
       )}
+      <div className="footer">© Blueberry breeding program task</div>
     </div>
+    </>
   )
 }
 
