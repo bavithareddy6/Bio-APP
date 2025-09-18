@@ -1,0 +1,213 @@
+Blueberry Breeding Program – Technical Documentation
+
+1) Purpose
+This application allows researchers to enter up to 10 gene names and:
+• Retrieve corresponding protein sequences as FASTA
+• Visualize gene expression values in an interactive Plotly heatmap
+• Download a TSV for the selected genes
+
+2) Architecture
+Services (Docker Compose)
+• db: PostgreSQL 15
+• api: Django 5 backend (REST API)
+• web: React + Vite frontend (Plotly)
+
+Ports
+• API: 8000 (host → container)
+• Frontend: 5173 (host → container)
+• Postgres: 5432 (host → container)  
+
+Volumes
+• db_data: persistent Postgres data volume
+• ./data → /app/data (mounted into api for data loading)
+
+3) Data Sources and Formats
+FASTA
+• Each entry starts with a header line beginning with '>'
+• The first token after '>' is the gene identifier (gene_name)
+• Sequences may span multiple lines; loader concatenates them
+
+TSV (two supported layouts)
+• 12-column layout (no header): 6 repeated [gene_name, value] pairs per row; values read from columns 2,4,6,8,10,12
+• 7-column layout (with header): gene name + six integer values
+• Zeros are valid expression values (not missing)
+
+4) Database Schema (Django models)
+ProteinSequence (core_proteinsequence)
+• id: BIGSERIAL PK
+• gene_name: text, UNIQUE, indexed
+• sequence: text
+
+GeneExpression (core_geneexpression)
+• id: BIGSERIAL PK
+• protein_id: OneToOne to ProteinSequence (FK, UNIQUE), CASCADE on delete
+• sample1..sample6: integer (default 0)
+
+Constraints and Guarantees
+• One unique ProteinSequence per gene_name
+• At most one GeneExpression row per gene (OneToOne)
+
+5) Data Loading Pipeline
+Command
+• python manage.py load_bio_data --fasta /app/data/<file.fa> --tsv /app/data/all_samples.tsv
+
+Algorithm
+• Parse FASTA into map: gene_name → concatenated sequence
+• Parse TSV; auto-detect format (12-pair or 7-column) and produce gene_name → six integers
+• Upsert ProteinSequence for every FASTA record
+• For TSV rows where a matching ProteinSequence exists, upsert GeneExpression
+• Idempotent: re-running updates values without duplicating rows
+
+6) REST API
+Health
+• GET /api/health → {"status":"ok"}
+
+Sequences (JSON)
+• POST /api/sequences
+  Request: {"genes":["GeneA","GeneB"]}
+  Response: {"count":N, "not_found":[], "sequences":[{"gene":"GeneA","sequence":"..."}]}
+
+Sequences (FASTA download)
+• GET /api/sequences/download?genes=GeneA,GeneB[&ext=fa|fasta][&wrap=0|60]
+  • ext: output filename extension (default fasta)
+  • wrap: line width (0 = single line)
+  Response: text/plain FASTA attachment
+
+Expressions (JSON for heatmap)
+• POST /api/expressions
+  Request: {"genes":["GeneA","GeneB"]}
+  Response: {"samples":["Sample1".."Sample6"], "rows":[{"gene":"GeneA","values":[6 ints]}], "not_found":[]}
+
+Expressions (TSV download)
+• GET /api/expressions/download?genes=GeneA,GeneB
+  Response: text/tab-separated-values attachment
+
+Validation and Limits
+• Max 10 genes per request (extras ignored)
+• 400 Bad Request for invalid payloads or missing query parameters
+
+7) Frontend UI (React + Plotly)
+• Chip-style gene input (Enter/comma to add, click × to remove)
+• Controls: FASTA extension (.fa/.fasta) and wrap width (single-line, 60, 80)
+• Heatmap: Plotly heatmap with responsive sizing and detailed hover tooltips
+• Data table with sticky header, horizontal scroll on narrow screens
+• Responsive layout for mobile; top bar and footer
+
+8) Environment and Configuration
+Environment variables (from .env)
+• POSTGRES_DB, POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_HOST, POSTGRES_PORT
+• DJANGO_SECRET_KEY, DJANGO_DEBUG, DJANGO_ALLOWED_HOSTS, DJANGO_CORS_ORIGINS
+
+CORS and Hostnames
+• CORS allows http://localhost:5173 by default for local development
+• Configure DJANGO_ALLOWED_HOSTS for production
+
+9) Build, Run, and Load Data (Docker)
+• cp .env.example .env
+• docker compose up --build
+• docker compose exec api python manage.py migrate
+• docker compose exec api python manage.py load_bio_data --fasta /app/data/STRG0A60OAF.protein.sequences.v12.0.fa --tsv /app/data/all_samples.tsv
+• UI: http://localhost:5173  • API: http://localhost:8000/api/
+
+10) Testing
+• docker compose exec api python manage.py test
+• Parser tests: core/tests/test_parsers.py
+• API tests: core/tests/test_api.py
+
+11) Troubleshooting
+Compose warning "version is obsolete"
+• Harmless; remove the top-level version key to silence
+
+Port conflicts on 5432 (Postgres)
+• Either stop the local Postgres or remap db ports to "5433:5432" and connect on 5433
+
+pgAdmin access
+• Connect to localhost:5432 (or 5433 if remapped), DB: bioapp, User: bioapp, Password: bioapp
+
+12) Security and Production Notes
+• Set DJANGO_DEBUG=0, strong DJANGO_SECRET_KEY, and strict DJANGO_ALLOWED_HOSTS
+• Consider serving Django via gunicorn and the built frontend via Nginx/CDN
+• Optionally add authentication for API endpoints
+
+13) Future Enhancements (optional)
+• Autocomplete gene names from DB, upload gene list files
+• Heatmap options: sorting, color scales, log transform
+• Named samples (replace Sample1..Sample6) via configuration
+• Caching for expression queries and pagination for large inputs
+
+14) Key File Map
+• docker-compose.yml  → services: db, api, web; volumes and ports
+• backend/bioapp/settings.py  → Django settings and DATABASES
+• backend/core/models.py  → ProteinSequence, GeneExpression
+• backend/core/management/commands/load_bio_data.py  → FASTA/TSV loader
+• backend/core/views.py  → API endpoints
+• frontend/src/App.jsx, frontend/src/styles.css  → UI logic and styles
+• README.md  → user-level setup and quick start
+
+15) Demo Script (Video Walkthrough)
+Goal: demonstrate end-to-end flow: bring up stack, load data, verify, use APIs, and show the UI.
+
+Terminal A — Project root
+1. Clone and enter the repo (or use existing workspace)
+   git clone <your-repo-url> Bio-APP && cd Bio-APP
+
+2. Prepare environment and data
+   cp .env.example .env
+   ls -lh data/
+   # Ensure the two files exist:
+   #  - data/STRG0A60OAF.protein.sequences.v12.0.fa
+   #  - data/all_samples.tsv
+
+3. Start containers
+   docker compose up --build -d
+   docker compose ps
+
+4. Initialize database and load data
+   docker compose exec api python manage.py migrate
+   docker compose exec api python manage.py load_bio_data \
+     --fasta /app/data/STRG0A60OAF.protein.sequences.v12.0.fa \
+     --tsv /app/data/all_samples.tsv
+
+5. Quick health check
+   curl http://localhost:8000/api/health
+
+6. Verify row counts in Postgres
+   docker compose exec db psql -U bioapp -d bioapp -c "select count(*) from core_proteinsequence;"
+   docker compose exec db psql -U bioapp -d bioapp -c "select count(*) from core_geneexpression;"
+
+7. API demos
+   # FASTA download (.fa, wrap 60)
+   curl -L -o sequences.fa \
+     "http://localhost:8000/api/sequences/download?genes=VaccDscaff1-augustus-gene-0.27,VaccDscaff1-augustus-gene-0.30&ext=fa&wrap=60"
+   head -n 10 sequences.fa
+
+   # Expressions JSON (pretty-print via Python if jq absent)
+   curl -s -X POST http://localhost:8000/api/expressions \
+     -H "Content-Type: application/json" \
+     -d '{"genes":["VaccDscaff1-augustus-gene-0.27","VaccDscaff1-augustus-gene-0.30","MissingGene"]}' \
+     | python -m json.tool
+
+   # Expressions TSV download
+   curl -L -o expressions.tsv \
+     "http://localhost:8000/api/expressions/download?genes=VaccDscaff1-augustus-gene-0.27,VaccDscaff1-augustus-gene-0.30"
+   head -n 10 expressions.tsv
+
+Browser — Show the UI
+8. Open http://localhost:5173
+   - Enter up to 10 genes (copy/paste a few from sequences.fa headers or your data)
+   - Click “View Heatmap” to render the Plotly heatmap
+   - Click “Download FASTA” (choose .fa/.fasta and wrap)
+   - Click “Download TSV” and open the file
+   - Point out the Missing genes notice if any
+
+Optional — pgAdmin (desktop) to show DB tables
+9. Connect to the Docker Postgres
+   - Host: localhost, Port: 5432 (or 5433 if remapped)
+   - Database: bioapp, Username: bioapp, Password: bioapp
+   - Browse tables core_proteinsequence and core_geneexpression; View/Edit Data → All Rows
+
+Run tests (optional for the demo)
+10. docker compose exec api python manage.py test
+
+Shutdown (after recording)
+11. docker compose down
