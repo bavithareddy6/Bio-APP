@@ -1,4 +1,4 @@
-Bioinformatics Web Platform — Blueberry Breeding Program (Django + React + Docker)
+Computational Biology Team Web Platform — Blueberry Breeding Program (Django + React + Docker)
 
 Overview
 - Full‑stack app for researchers to input up to 10 gene names, fetch their protein sequences, visualize gene expression as an interactive heatmap, and download results.
@@ -110,11 +110,6 @@ Security & Production Notes
 - Consider serving Django via `gunicorn` and the built frontend via Nginx or a CDN.
 - Limit API to authenticated users if deploying beyond local research use.
 
-Roadmap (nice‑to‑have)
-- Autocomplete gene names from DB, upload gene list file.
-- Heatmap improvements: sorting, color scales, log transform.
-- Configurable sample labels instead of `Sample1..Sample6`.
-- CI (GitHub Actions) to run tests on push.
 
 Acknowledgements
 - Built for a Blueberry breeding program task; uses public libraries: Django, Plotly, React.
